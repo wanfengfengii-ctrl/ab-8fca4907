@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>编钟残音联合基频识别</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>编钟残音 · 联合基频识别</h1>
+      <p class="subtitle">
+        服务端联合选择严格递增且不重复的泛音序号与杂峰剔除方案，
+        使<strong>同一基频</strong>同时落入所有采用峰的容差——而非逐峰就近归属后拼接。
+      </p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <div class="card-head">
+        <h2>① 录入残音频峰</h2>
+        <div class="row-actions">
+          <button type="button" id="addRow" class="btn btn-ghost">＋ 增加一条</button>
+          <button type="button" id="removeRow" class="btn btn-ghost">－ 删除末条</button>
+        </div>
+      </div>
+      <p class="hint">6 至 18 条，频率须按升序严格递增；每条给出峰值频率与允许偏差（绝对量，单位一致即可）。</p>
+      <div class="table-scroll">
+        <table class="input-table" id="peakTable">
+          <thead>
+            <tr><th style="width:3rem">#</th><th>峰值频率（十进制）</th><th style="width:12rem">允许偏差 ±</th><th class="drop-col" style="width:3rem"></th></tr>
+          </thead>
+          <tbody id="peakRows"></tbody>
+        </table>
+      </div>
+
+      <h2 class="mt">② 判定条件</h2>
+      <div class="params">
+        <label>候选基频闭区间 下界
+          <input type="text" id="f0_min" inputmode="decimal" value="95">
+        </label>
+        <label>候选基频闭区间 上界
+          <input type="text" id="f0_max" inputmode="decimal" value="105">
+        </label>
+        <label>最高泛音序号
+          <input type="number" id="max_harmonic" min="1" max="40" value="12">
+        </label>
+        <label>最多可剔除杂峰数
+          <input type="number" id="max_rejected" min="0" value="2">
+        </label>
+      </div>
+
+      <div class="submit-bar">
+        <button type="button" id="solveBtn" class="btn btn-primary">联合求解</button>
+        <button type="button" id="sampleRecover" class="btn btn-ghost">填入可复原示例</button>
+        <button type="button" id="sampleUnsolvable" class="btn btn-ghost">填入无解残音示例</button>
+        <span id="rowCount" class="row-count"></span>
+      </div>
+      <div id="inputError" class="alert alert-error hidden"></div>
+    </section>
+
+    <section id="resultCard" class="card hidden">
+      <h2>③ 联合识别结果</h2>
+      <div id="verdict"></div>
+      <div id="evidence" class="alert alert-evidence hidden"></div>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="table-scroll">
+        <table class="result-table">
+          <thead>
+            <tr>
+              <th>#</th><th>原始峰值</th><th>容差 ±</th><th>判定</th>
+              <th>泛音序号 h</th><th>h × f₀ 预测</th><th>残差 f − h f₀</th>
+              <th>绝对误差</th><th>相对误差</th><th>容差校验</th>
+            </tr>
+          </thead>
+          <tbody id="resultRows"></tbody>
+        </table>
+      </div>
+      <p class="hint" id="methodNote"></p>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">博物馆声学修复辅助 · 联合区间交集算法 · 采用峰数优先 → 最大相对误差 → 误差平方和 → 录入顺序</div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

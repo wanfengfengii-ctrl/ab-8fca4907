@@ -1,0 +1,2 @@
+# 编钟残音联合基频识别：仅依赖 Python 3.11 标准库，无第三方包。
+# 保留此文件便于统一 CI/构建流程；`pip install -r requirements.txt` 为空操作。

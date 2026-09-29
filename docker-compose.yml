@@ -1,0 +1,39 @@
+services:
+  web:
+    build: .
+    image: bianzhong-analyzer:latest
+    ports:
+      # Configurable host port: WEB_PORT=9090 docker compose up
+      - "${WEB_PORT:-8080}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8000/health',timeout=3); sys.exit(0 if json.load(r).get('status')=='ok' else 1)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  # One-shot verification: waits until web is healthy, runs the code tests and
+  # an API smoke suite (health endpoint + one recoverable + one unsolvable
+  # fragment), then exits. Its exit code is the verification result:
+  #   docker compose up --build verify ; docker compose ps
+  # inspect with: docker compose logs verify
+  verify:
+    build: .
+    image: bianzhong-analyzer:latest
+    depends_on:
+      web:
+        condition: service_healthy
+    environment:
+      SMOKE_BASE_URL: http://web:8000
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo "== [verify] image build handled by compose --build =="
+        echo "== [verify] code tests =="
+        python -m pytest tests -q
+        echo "== [verify] API smoke (health + solvable + unsolvable) =="
+        python scripts/smoke_api.py
+        echo "== [verify] all checks passed =="
+    restart: "no"

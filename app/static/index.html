@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>编钟残音 · 联合基频分析</title>
+<style>
+  :root {
+    --bg: #f4efe6;
+    --panel: #fffdf8;
+    --ink: #2b2620;
+    --muted: #7a7064;
+    --line: #ddd2c0;
+    --bronze: #8a5a28;
+    --bronze-dark: #6b451e;
+    --jade: #2f6d5f;
+    --jade-bg: #e7f1ee;
+    --red: #a0332a;
+    --red-bg: #f9e9e7;
+    --amber: #9a6a12;
+    --amber-bg: #faf2df;
+    --shadow: 0 2px 10px rgba(80, 60, 30, .08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Noto Serif SC", "Songti SC", "SimSun", Georgia, serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.55;
+  }
+  header {
+    background: linear-gradient(135deg, #3a2c18, #6b451e);
+    color: #f7ecd8;
+    padding: 26px 32px;
+    border-bottom: 4px solid #b08a4e;
+  }
+  header h1 { margin: 0; font-size: 26px; letter-spacing: 3px; }
+  header p { margin: 6px 0 0; color: #dcc9a6; font-size: 14px; }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 20px 64px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 20px 22px;
+    margin-bottom: 22px;
+  }
+  .card h2 {
+    margin: 0 0 14px;
+    font-size: 18px;
+    color: var(--bronze-dark);
+    border-left: 4px solid var(--bronze);
+    padding-left: 10px;
+    letter-spacing: 1px;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { padding: 7px 9px; text-align: left; }
+  thead th {
+    border-bottom: 2px solid var(--line);
+    color: var(--muted);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px dashed #e7ddcb; }
+  tbody tr:hover { background: #faf6ee; }
+  tbody tr.evidence { background: var(--red-bg); }
+  tbody tr.evidence:hover { background: #f6ddd9; }
+  input[type="number"] {
+    width: 110px;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font: inherit;
+    background: #fff;
+  }
+  input.invalid { border-color: var(--red); background: #fdf3f2; }
+  .params { display: flex; flex-wrap: wrap; gap: 16px 28px; margin-top: 6px; }
+  .params label { font-size: 14px; color: var(--muted); display: block; }
+  .params input { width: 120px; margin-top: 3px; }
+  .btns { margin-top: 18px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 7px;
+    padding: 9px 20px;
+    border: 1px solid var(--bronze-dark);
+  }
+  .primary {
+    background: var(--bronze);
+    color: #fff8ea;
+    font-weight: 600;
+    letter-spacing: 2px;
+  }
+  .primary:hover { background: var(--bronze-dark); }
+  .ghost { background: transparent; color: var(--bronze-dark); }
+  .ghost:hover { background: #f2e8d6; }
+  .icon-btn { padding: 3px 10px; font-size: 13px; }
+  .hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+  .msg { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 14.5px; display: none; }
+  .msg.ok { display: block; background: var(--jade-bg); color: var(--jade); border: 1px solid #bcd9d1; }
+  .msg.bad { display: block; background: var(--red-bg); color: var(--red); border: 1px solid #e4bfb9; }
+  .msg.warn { display: block; background: var(--amber-bg); color: var(--amber); border: 1px solid #e7d3a2; }
+  .summary { display: flex; flex-wrap: wrap; gap: 14px 26px; margin: 12px 0 6px; }
+  .stat { min-width: 130px; }
+  .stat .k { font-size: 12.5px; color: var(--muted); }
+  .stat .v { font-size: 20px; color: var(--bronze-dark); font-weight: 700; }
+  .badge {
+    display: inline-block; padding: 1px 10px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 600;
+  }
+  .badge.adopt { background: var(--jade-bg); color: var(--jade); border: 1px solid #b9d6ce; }
+  .badge.reject { background: #efeae1; color: #8a7d6b; border: 1px solid #d8cdbb; }
+  .badge.kept { background: var(--red-bg); color: var(--red); border: 1px solid #e4bfb9; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .footer-note { color: var(--muted); font-size: 12.5px; margin-top: 10px; }
+  .evid-mark { color: var(--red); font-weight: 700; }
+  h3.sub { font-size: 15px; margin: 18px 0 8px; color: var(--bronze-dark); }
+  #loading { color: var(--muted); font-size: 14px; display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>编钟残音 · 联合基频分析</h1>
+  <p>从带环境杂峰的测音频谱中，联合选择严格递增的泛音序号与可剔除杂峰，求一口钟共有的统一基频</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>峰值录入</h2>
+    <div id="formMsg" class="msg"></div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:42px">序</th>
+          <th>峰值频率 (Hz)</th>
+          <th>允许偏差 (Hz)</th>
+          <th style="width:70px"></th>
+        </tr>
+      </thead>
+      <tbody id="peakRows"></tbody>
+    </table>
+    <div class="btns">
+      <button type="button" class="ghost icon-btn" id="addRow">＋ 增加一条</button>
+      <span class="hint" id="rowCountHint"></span>
+    </div>
+
+    <h2 style="margin-top:22px">分析参数</h2>
+    <div class="params">
+      <div>
+        <label>候选基频下界 (Hz)</label>
+        <input type="number" id="f0Min" step="any" value="80" />
+      </div>
+      <div>
+        <label>候选基频上界 (Hz)</label>
+        <input type="number" id="f0Max" step="any" value="130" />
+      </div>
+      <div>
+        <label>最高泛音序号</label>
+        <input type="number" id="maxH" step="1" min="2" value="12" />
+      </div>
+      <div>
+        <label>最多可剔除杂峰数</label>
+        <input type="number" id="maxR" step="1" min="0" value="1" />
+      </div>
+    </div>
+
+    <div class="btns">
+      <button type="button" class="primary" id="analyzeBtn">提交分析</button>
+      <button type="button" class="ghost" id="loadSolvable">载入可复原残音示例</button>
+      <button type="button" class="ghost" id="loadUnsolvable">载入无解残音示例</button>
+      <span id="loading">分析中…</span>
+    </div>
+    <p class="footer-note">
+      服务端对所有峰联合搜索：在同一基频同时落入每条采用峰容差区间的前提下，
+      依次按「采用峰数最多 → 最大相对误差最小 → 误差平方和最小 → 录入顺序最早的序号方案」择优，
+      不会先逐峰就近归属再拼接结论。
+    </p>
+  </section>
+
+  <section class="card" id="resultCard" style="display:none">
+    <h2>分析结果</h2>
+    <div id="resultMsg" class="msg"></div>
+    <div id="summary" class="summary"></div>
+    <h3 class="sub">逐峰归属与误差</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:42px">序</th>
+          <th class="num">录入频率</th>
+          <th class="num">允许偏差</th>
+          <th>判定</th>
+          <th class="num">泛音序号</th>
+          <th class="num">理论频率 n·f₀</th>
+          <th class="num">绝对误差</th>
+          <th class="num">相对误差</th>
+        </tr>
+      </thead>
+      <tbody id="resultRows"></tbody>
+    </table>
+    <p class="footer-note" id="resultFootnote"></p>
+  </section>
+</main>
+
+<script>
+"use strict";
+
+const MIN_ROWS = 6, MAX_ROWS = 18;
+const rowsEl = document.getElementById("peakRows");
+const formMsg = document.getElementById("formMsg");
+
+const SOLVABLE = {
+  peaks: [
+    {frequency: 200.4, tolerance: 1.5},
+    {frequency: 299.6, tolerance: 1.5},
+    {frequency: 401.1, tolerance: 1.5},
+    {frequency: 555.2, tolerance: 1.5},
+    {frequency: 600.3, tolerance: 1.5},
+    {frequency: 799.7, tolerance: 1.5},
+    {frequency: 900.5, tolerance: 1.5}
+  ],
+  f0_min: 80, f0_max: 130, max_harmonic: 12, max_rejected: 1
+};
+
+// Harmonics of two incompatible bells (≈100 Hz 与 ≈128 Hz) interleaved;
+// dropping just one peak cannot make one f0 satisfy the remaining five.
+const UNSOLVABLE = {
+  peaks: [
+    {frequency: 200.0, tolerance: 2.0},
+    {frequency: 256.0, tolerance: 2.0},
+    {frequency: 300.0, tolerance: 2.0},
+    {frequency: 384.0, tolerance: 2.0},
+    {frequency: 512.0, tolerance: 2.0},
+    {frequency: 600.0, tolerance: 2.0}
+  ],
+  f0_min: 90, f0_max: 130, max_harmonic: 12, max_rejected: 1
+};
+
+function setFormMsg(text, kind) {
+  if (!text) { formMsg.style.display = "none"; formMsg.textContent = ""; return; }
+  formMsg.className = "msg " + kind;
+  formMsg.textContent = text;
+}
+
+function addRow(freq = "", tol = "") {
+  const tr = document.createElement("tr");
+  tr.innerHTML =
+    '<td class="row-idx"></td>' +
+    '<td><input type="number" step="any" class="inp-freq" /></td>' +
+    '<td><input type="number" step="any" min="0" class="inp-tol" /></td>' +
+    '<td><button type="button" class="ghost icon-btn row-del">删除</button></td>';
+  tr.querySelector(".inp-freq").value = freq;
+  tr.querySelector(".inp-tol").value = tol;
+  tr.querySelector(".row-del").addEventListener("click", () => {
+    if (rowsEl.children.length <= MIN_ROWS) {
+      setFormMsg(`至少保留 ${MIN_ROWS} 条峰值。`, "warn");
+      return;
+    }
+    tr.remove();
+    renumber();
+  });
+  rowsEl.appendChild(tr);
+  renumber();
+}
+
+function renumber() {
+  [...rowsEl.children].forEach((tr, i) => {
+    tr.querySelector(".row-idx").textContent = i + 1;
+    tr.classList.remove("evidence");
+  });
+  document.getElementById("rowCountHint").textContent =
+    `共 ${rowsEl.children.length} 条（允许 ${MIN_ROWS}–${MAX_ROWS} 条，须按频率严格升序）`;
+}
+
+function loadExample(ex) {
+  rowsEl.innerHTML = "";
+  ex.peaks.forEach(p => addRow(p.frequency, p.tolerance));
+  document.getElementById("f0Min").value = ex.f0_min;
+  document.getElementById("f0Max").value = ex.f0_max;
+  document.getElementById("maxH").value = ex.max_harmonic;
+  document.getElementById("maxR").value = ex.max_rejected;
+  setFormMsg("");
+  document.getElementById("resultCard").style.display = "none";
+}
+
+function collectInput() {
+  const peaks = [];
+  const freqInputs = [];
+  let valid = true;
+  [...rowsEl.children].forEach((tr, i) => {
+    const fEl = tr.querySelector(".inp-freq");
+    const tEl = tr.querySelector(".inp-tol");
+    const f = fEl.value === "" ? NaN : Number(fEl.value);
+    const t = tEl.value === "" ? NaN : Number(tEl.value);
+    fEl.classList.toggle("invalid", !(f > 0) || !Number.isFinite(f));
+    tEl.classList.toggle("invalid", !(t >= 0) || !Number.isFinite(t));
+    if (!(f > 0) || !(t >= 0) || !Number.isFinite(f) || !Number.isFinite(t)) valid = false;
+    if (i > 0 && f <= peaks[i - 1].frequency) {
+      fEl.classList.add("invalid");
+      valid = false;
+    }
+    peaks.push({frequency: f, tolerance: t});
+    freqInputs.push(fEl);
+  });
+  const num = id => Number(document.getElementById(id).value);
+  const params = {
+    f0_min: num("f0Min"), f0_max: num("f0Max"),
+    max_harmonic: num("maxH"), max_rejected: num("maxR")
+  };
+  if (!(peaks.length >= MIN_ROWS && peaks.length <= MAX_ROWS)) valid = false;
+  if (!(params.f0_min > 0 && params.f0_max >= params.f0_min)) valid = false;
+  if (!(params.max_harmonic >= 2 && Number.isInteger(params.max_harmonic))) valid = false;
+  if (!(params.max_rejected >= 0 && Number.isInteger(params.max_rejected))) valid = false;
+  return {valid, payload: {peaks, ...params}};
+}
+
+const fmt = (x, d = 4) => x == null ? "—" : Number(x).toFixed(d);
+const pct = x => x == null ? "—" : (x * 100).toFixed(4) + "%";
+
+function renderResult(data) {
+  const card = document.getElementById("resultCard");
+  const msg = document.getElementById("resultMsg");
+  const summary = document.getElementById("summary");
+  const body = document.getElementById("resultRows");
+  const footnote = document.getElementById("resultFootnote");
+  card.style.display = "";
+  body.innerHTML = "";
+  summary.innerHTML = "";
+  [...rowsEl.children].forEach(tr => tr.classList.remove("evidence"));
+
+  if (!data.feasible) {
+    // 无解时不改动录入区，原始峰值原样保留。
+    msg.className = "msg bad";
+    const k = data.first_unexplainable_index;
+    let detail = "";
+    if (k != null) {
+      const f = data.peaks[k].frequency;
+      detail = `最早证据：按峰值顺序第 ${k + 1} 条（${fmt(f, 3)} Hz）` +
+               `无法纳入任何剩余的联合解释——在允许剔除的杂峰数内，不存在任何严格递增且不重复的泛音序号组合，` +
+               `能使同一基频同时满足该峰与此前各峰的容差。原始峰值已保留，可调整参数后重试。`;
+      rowsEl.children[k].classList.add("evidence");
+      rowsEl.children[k].scrollIntoView({behavior: "smooth", block: "nearest"});
+    } else {
+      detail = "不存在满足约束的联合基频；原始峰值已保留。";
+    }
+    msg.textContent = "无解：" + detail;
+  } else {
+    msg.className = "msg ok";
+    msg.textContent = `已求得统一基频：${fmt(data.f0, 4)} Hz，` +
+      `采用 ${data.adopted_count} 峰，剔除 ${data.rejected_count} 峰。`;
+    summary.innerHTML =
+      stat("统一基频 f₀", fmt(data.f0, 4) + " Hz") +
+      stat("采用峰数", data.adopted_count) +
+      stat("剔除杂峰", data.rejected_count) +
+      stat("最大相对误差", pct(data.max_relative_error)) +
+      stat("相对误差平方和", Number(data.sum_squared_relative_error).toExponential(4));
+  }
+
+  data.peaks.forEach(p => {
+    const tr = document.createElement("tr");
+    if (!data.feasible && p.index === data.first_unexplainable_index) tr.classList.add("evidence");
+    const status = p.adopted
+      ? '<span class="badge adopt">采用</span>'
+      : (data.feasible
+          ? '<span class="badge reject">剔除</span>'
+          : '<span class="badge kept">未归属·原样保留</span>');
+    const mark = (!data.feasible && p.index === data.first_unexplainable_index)
+      ? ' <span class="evid-mark">◀ 最早无法纳入</span>' : "";
+    tr.innerHTML =
+      `<td>${p.index + 1}${mark}</td>` +
+      `<td class="num">${fmt(p.frequency, 3)}</td>` +
+      `<td class="num">±${fmt(p.tolerance, 3)}</td>` +
+      `<td>${status}</td>` +
+      `<td class="num">${p.harmonic ?? "—"}</td>` +
+      `<td class="num">${fmt(p.expected, 3)}</td>` +
+      `<td class="num">${fmt(p.abs_error, 4)}</td>` +
+      `<td class="num">${pct(p.rel_error)}</td>`;
+    body.appendChild(tr);
+  });
+
+  footnote.textContent = data.feasible
+    ? "相对误差 = |录入频率 − 泛音序号·f₀| / 录入频率；所有采用峰满足 |fᵢ − nᵢ·f₀| ≤ 各自允许偏差。"
+    : "判定依据：对全部泛音序号与剔除方案的联合分支限界搜索（非逐峰就近归属）。";
+}
+
+function stat(k, v) {
+  return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+}
+
+async function analyze() {
+  setFormMsg("");
+  const {valid, payload} = collectInput();
+  if (!valid) {
+    setFormMsg("输入有误：请保证 6–18 条正频率、严格升序且不重复，偏差非负，参数完整合理。", "bad");
+    return;
+  }
+  const btn = document.getElementById("analyzeBtn");
+  const loading = document.getElementById("loading");
+  btn.disabled = true; loading.style.display = "";
+  try {
+    const resp = await fetch("/api/analyze", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      const m = data.detail && data.detail.message ? data.detail.message
+        : (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+      setFormMsg("请求被拒绝：" + m, "bad");
+      return;
+    }
+    renderResult(data);
+  } catch (e) {
+    setFormMsg("网络或服务异常：" + e, "bad");
+  } finally {
+    btn.disabled = false; loading.style.display = "none";
+  }
+}
+
+document.getElementById("addRow").addEventListener("click", () => {
+  if (rowsEl.children.length >= MAX_ROWS) {
+    setFormMsg(`最多 ${MAX_ROWS} 条峰值。`, "warn");
+    return;
+  }
+  addRow();
+});
+document.getElementById("analyzeBtn").addEventListener("click", analyze);
+document.getElementById("loadSolvable").addEventListener("click", () => loadExample(SOLVABLE));
+document.getElementById("loadUnsolvable").addEventListener("click", () => loadExample(UNSOLVABLE));
+
+for (let i = 0; i < MIN_ROWS; i++) addRow();
+loadExample(SOLVABLE);
+</script>
+</body>
+</html>
